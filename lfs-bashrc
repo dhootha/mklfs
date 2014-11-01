@@ -1,0 +1,10 @@
+set +h
+umask 022
+LFS=/mnt/lfs
+LFS_SOURCES=/mnt/lfs/usr/src
+LFS_KERNEL_PKG=linux-3.16.6.tar.xz
+LC_ALL=POSIX
+LFS_TGT=x86_64-lfs-linux-gnu
+PATH=/tools/bin:/bin:/usr/bin
+export LFS LFS_SOURCES LFS_KERNEL_PKG LC_ALL LFS_TGT PATH
+

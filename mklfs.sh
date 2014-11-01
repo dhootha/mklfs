@@ -111,11 +111,13 @@ EXIT_PROMPT_GETOPT_UNKNOWN=14
 
 EXIT_NOTFOUND_VERSIONCHECK=20
 EXIT_NOTFOUND_LIBRARYCHECK=21
+EXIT_NOTFOUND_CONFPARSE=22
 EXIT_NOTFOUND_WGETLIST_NOKERNEL=25
 EXIT_NOTFOUND_MD5SUMS_NOKERNEL=26
 EXIT_NOTFOUND_MD5SUM=30
 EXIT_NOTFOUND_GPG=31
 EXIT_NOTFOUND_XZ=32
+EXIT_NOTFOUND_KERNEL=33
 
 EXIT_DOWNLOAD_WGETLIST_NOKERNEL=50
 EXIT_DOWNLOAD_KERNEL_GIT=51
@@ -130,18 +132,82 @@ EXIT_SYSTEM_NOT_CONFORMANT_LIBS=101
 
 EXIT_SIGINT=200
 EXIT_USERFIGOUT_NOCODE=201
-EXIT_UNKNOWN=202
+EXIT_UNKNOWN_CONFSET=202
+EXIT_UNKNOWN=210
 
 ### ### ###
 ### ### ### FUNCTIONS
 ### ### ###
 
+conf_set() {
+    #TODO: fazer uma funcao que chama essa, e escreve no arquivo .conf
+    #      de maneira que sobreescreve a variavel certa, pra nao ficar aquele
+    #      monte de repeteco no .conf
+    if [[ $# -ne 1 ]]; then
+        echo "conf_set() must have one argument" >&2
+        exit $EXIT_UNKNOWN_CONFSET
+    fi
+    if [[ ! ( $1 =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ && -v $1 ) ]]; then
+        echo "conf_set() first argument must be a variable name" >&2
+        exit $EXIT_UNKNOWN_CONFSET
+    fi
+    eval "temp=\"\$$1\""
+    use_quote='"'
+    if [[
+        "$(printf '%s' "$temp" | wc -l)" -eq 0 &&
+        $temp =~ ^[a-zA-Z0-9_/.-]+$
+    ]]; then
+        use_quote='';
+    fi
+    printf '%s=%s' "$1" "$use_quote"
+    printf '%s' "$temp" | sed -r 's/[\$`"]/\\&/g'
+    printf '%s\n' "$use_quote"
+}
+
+conf_set_array() {
+    if [[ $# -ne 1 ]]; then
+        echo "conf_set_array() must have one argument" >&2
+        exit $EXIT_UNKNOWN_CONFSET
+    fi
+    if [[ ! ( $1 =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ && -v $1 ) ]]; then
+        echo "conf_set_array() first argument must be a variable name" >&2
+        exit $EXIT_UNKNOWN_CONFSET
+    fi
+    eval "qtd=\${#${1}[*]}"
+    eval "arr=(\${!${1}[*]})"
+    printf '%s=(' "$1";
+    if [[ $qtd -ne 0 ]]; then
+        printf '\n';
+        lin_ix=0
+        for ix in "${arr[@]}"; do
+            eval 'temp="${'$1'[$ix]}"'
+            printf '    '
+            if [[ $ix -ne $lin_ix ]]; then
+                printf '[%d]=' "$ix"
+            fi
+            use_quote='"'
+            if [[
+                "$(printf '%s' "$temp" | wc -l)" -eq 0 &&
+                $temp =~ ^[a-zA-Z0-9_/.-]+$
+            ]]; then
+                use_quote='';
+            fi
+            printf '%s' "$use_quote"
+            printf '%s' "$temp" | sed -r 's/[\$`"]/\\&/g'
+            printf '%s\n' "$use_quote"
+            lin_ix=$((ix+1))
+        done;
+    fi;
+    printf ')\n'
+}
+
 mklfs_cleanup() {
     stty echo
     cd "$CURR_DIR"
-    declare -p LFS
-    declare -p LFS_SOURCES
-    declare -p PARTS_MPS
+    conf_set LFS
+    conf_set LFS_SOURCES
+    conf_set_array PARTS_MPS
+    conf_set LFS_KERNEL_PKG
 }
 
 prompt() {
@@ -382,6 +448,19 @@ cd "$( dirname "${BASH_SOURCE[0]}" )"
 write_log "${INVOCATION}"
 write_log
 
+if [[ ! -x confparse.sh ]]; then
+    prompt err \
+      "Error! Couldn't find the file \`confparse.sh'.  It should have"
+    prompt err \
+      "    been distributed alongside with this script."
+    echo
+    write_log "Couldn't find confparse.sh."
+    write_log "Quitting with EXIT_NOTFOUND_CONFPARSE."
+    mklfs_cleanup
+    exit $EXIT_NOTFOUND_CONFPARSE
+fi
+
+
 ### ###     0.7
 ### ###
 if [[ $START_CHP -lt 0 || ( $START_CHP -eq 0 && $START_SCT -le 7 ) ]]; then
@@ -541,7 +620,7 @@ while [[ ! -d $l ]]; do
     read
 done
 export LFS="$(realpath -s $l)"
-echo "unset LFS; $(declare -p LFS)" >> mklfs.conf
+(printf 'export '; conf_set LFS) >> mklfs.conf
 echo
 write_log "LFS=$LFS"
 
@@ -617,9 +696,9 @@ fi
 echo
 write_log "parts-mps defined:"
 write_log "$(declare -p PARTS_MPS)"
-echo "unset PARTS_MPS; $(declare -p PARTS_MPS)" >> mklfs.conf
+conf_set_array PARTS_MPS >> mklfs.conf
 
-declare -a IGNORE_PARTS='()' 
+declare -a IGNORE_PARTS='()'
 prompt ok "Now  mount the root partition in \$LFS,  create the mountpoint"
 prompt ok "    directories  for  the  other  partitions  you  made (e.g."
 prompt -n ok "    \$LFS/home), and mount them. Hit \`enter' when done."
@@ -692,7 +771,7 @@ if [[ ! ${LFS:-} ]]; then
         read
     done
     export LFS="$(realpath -s $l)"
-    echo "unset LFS; $(declare -p LFS)" >> mklfs.conf
+    (printf 'export '; conf_set LFS) >> mklfs.conf
     echo
     write_log "LFS=$LFS"
 fi
@@ -736,7 +815,7 @@ while [[ ! -d $l ]]; do
 done
 export LFS_SOURCES="$l"
 safe_LFS_SOURCES=$safe_l
-echo "unset LFS_SOURCES; $(declare -p LFS_SOURCES)" >> mklfs.conf
+(printf 'export '; conf_set LFS_SOURCES) >> mklfs.conf
 echo
 write_log "LFS_SOURCES=$LFS_SOURCES"
 write_log "LFS_SOURCES now exists"
@@ -832,7 +911,8 @@ echo
 if ! [[ $l == s* ]]; then
 
     if [[ ! -f "wget-list-no-kernel" ]]; then
-        prompt err "Can't  find  wget-list-no-kernel !   Place  it  in  the  same"
+        prompt err \
+            "Can't  find  wget-list-no-kernel !   Place  it  in  the  same"
         prompt err "    directory as mklfs.sh:"
         prompt err ""
         prompt err "        `pwd`"
@@ -961,8 +1041,10 @@ else
 
     prompt ok "We will check the packages and patches in $LFS_SOURCES"
     if ! (cd "$LFS_SOURCES" && md5sum -c md5sums-no-kernel); then
-        prompt warn "Some packages and/or patches failed the checksum.  If you hit"
-        prompt warn "    \`enter',  mklfs.sh will quit,  but  you can type \`yes' to"
+        prompt warn \
+            "Some packages and/or patches failed the checksum.  If you hit"
+        prompt warn \
+            "    \`enter',  mklfs.sh will quit,  but  you can type \`yes' to"
         prompt -n warn "    ignore this, and continue: "
         read l
         if [[ $l != y* ]]; then
@@ -973,15 +1055,6 @@ else
 
     prompt ok "All patches  and  most packages  checked.  Now,  checking the"
     prompt ok "    kernel tarball."
-    #TODO: check the kernel
-    #first, find out what's the kernel version
-    #$ ls "$LFS_SOURCES" | grep -E '^linux-3\.16\.[0-9]+\.tar\.(gz|bz2|xz)'
-    #verificar se esse comando ai em cima da pelo menos um resultado;
-    #se sim:
-    #   talvez sejam varios resultados; extrair o mais recente
-    #se nao:
-    #   avisar o user que deu ruim e perguntar se quer sair, ou se quer
-    #       especificar um arquivo (e abrir mao do checksum)
     kernel_minor="$(
         ls "$LFS_SOURCES" |
         grep -E '^linux-3\.16\.[0-9]+\.tar\.(gz|bz2|xz)$' |
@@ -995,17 +1068,67 @@ else
         head -n1
     )"
     if [[ $kernel_minor && $kernel_ext ]]; then
-        # verificar o kernel linux-3.16.${kernel_minor}.tar.${kernel_ext}
         kernel_tarb="linux-3.16.${kernel_minor}.tar.${kernel_ext}"
         kernel_sig="linux-3.16.${kernel_minor}.tar.sign"
-        if ! (xz -cd "$kernel_tarb" | gpg --verify "$kernel_sig" -); then
+        ZCAT='zcat'
+        if ! which zcat 2>&1 >/dev/null; then
+            ZCAT='gzcat'
+        fi
+        unzip_cmd=("xz" "-cd")
+        case $kernel_ext in
+        gz)
+            unzip_cmd=("$ZCAT")
+            ;;
+        bz2)
+            unzip_cmd=("bzcat" "-k")
+            ;;
+        esac
+        kernel_sig="linux-3.16.${kernel_minor}.tar.sign"
+        kernel_sigurl="https://www.kernel.org/pub/linux/kernel/v3.x/$kernel_sig"
+        prompt ok "Downloading kernel signature ..."
+        prompt cmd "wget -nv -N -P \"$LFS_SOURCES\" \"$kernel_sigurl\""
+        tries=0
+        while ! wget -nv -N -P "$LFS_SOURCES" "$kernel_sigurl"; do
+            sleep_time=$((2**tries))
+            let tries+=1
+            if [[ $tries -gt 6 ]]; then
+                write_log "bad wget (kernel sig) after 6 tries"
+                prompt err "Can't download kernel signature! Exiting."
+                mklfs_cleanup
+                exit $EXIT_DOWNLOAD_KERNEL
+            fi
+            prompt warn "Failed downloading kernel signature! :\\"
+            prompt -n warn "Trying again after $sleep_time second(s)..."
+            sleep $sleep_time
+            echo
+        done
+        if ! (
+            cd "$LFS_SOURCES" &&
+            "${unzip_cmd[@]}" "$kernel_tarb" | gpg --verify "$kernel_sig" -
+        ); then
             prompt err "Bad signature on kernel tarball $kernel_tarb !! :\\"
-            prompt err "You can try again after re-downloading your linux-* package."
+            prompt err \
+                "You can try again after re-downloading your linux-* package."
             mklfs_cleanup
             exit $EXIT_CHECKSUM_KERNEL
         fi
     else
-        # nao achei o kernel tarball
+        prompt warn \
+            "Can't find kernel tarball! You can type in the kernel tarball"
+        prompt warn \
+            "    filename  (and give up  the signature check),  or you can"
+        prompt -n warn "    just hit \`enter' to quit: "
+        read l
+        if [[ ! $l ]]; then
+            user_figout $EXIT_NOTFOUND_KERNEL
+        fi
+        if [[ ! -f "$LFS_SOURCES/$l" ]]; then
+            prompt err "The file $LFS_SOURCES/$l does not exist!"
+            echo
+            mklfs_cleanup
+            exit $EXIT_NOTFOUND_KERNEL
+        fi
+        kernel_tarb="$l"
     fi
 
     prompt ok "All downloads checked!"
@@ -1013,7 +1136,7 @@ else
 fi
 echo
 export LFS_KERNEL_PKG="$kernel_tarb"
-echo "unset LFS_KERNEL_PKG; $(declare -p LFS_KERNEL_PKG)" >> mklfs.conf
+(printf 'export '; conf_set LFS_KERNEL_PKG) >> mklfs.conf
 echo
 write_log "LFS_KERNEL_PKG=$LFS_KERNEL_PKG"
 
@@ -1023,7 +1146,7 @@ fi; if [[ $START_CHP -lt 4 || ( $START_CHP -eq 4 && $START_SCT -le 2 ) ]]; then
 prompt header "SECTION 4.2. Creating the \$LFS/tools Directory"
 echo
 [[ -f mklfs.conf ]] && . mklfs.conf
-if [[ ! ${LFS:-} ]]; then
+if [[ ! -v LFS || ! $LFS ]]; then
     prompt -n ok "Choose a \$LFS [default: /mnt/lfs]: "
     read l
     if [[ ! $l ]]; then
@@ -1034,7 +1157,7 @@ if [[ ! ${LFS:-} ]]; then
         read
     done
     export LFS="$(realpath -s $l)"
-    echo "unset LFS; $(declare -p LFS)" >> mklfs.conf
+    (printf 'export '; conf_set LFS) >> mklfs.conf
     echo
     write_log "LFS=$LFS"
 fi
@@ -1062,9 +1185,167 @@ for ix in ${!PARTS_MPS[*]}; do
         fi
     done
 done
-#TODO: fazer algo a respeito do LFS_KERNEL_PKG
+if [[ ! -v LFS_SOURCES || ! $LFS_SOURCES ]]; then
+    prompt -n ok "Choose a sources directory [default $LFS/sources]: "
+    read l
+    if [[ ! $l ]]; then
+        l="$LFS/sources"
+    fi
+    l="$(realpath -s $l)"
+    while [[ ! -d $l ]]; do
+        prompt -r cmd "mkdir -pv "$safe_l
+        su -c "mkdir -pv "$safe_l -
+    done
+    export LFS_SOURCES="$l"
+    (printf 'export '; conf_set LFS_SOURCES) >> mklfs.conf
+    echo
+    write_log "LFS_SOURCES=$LFS_SOURCES"
+    write_log "LFS_SOURCES now exists"
+    should_i_echo='no'
+    while [[ ! -k $LFS_SOURCES ]]; do
+        should_i_echo='yes'
+        prompt -r cmd "chmod -v a+wt $LFS_SOURCES"
+        su -c "chmod -v a+wt $LFS_SOURCES" -
+    done
+    [[ $should_i_echo == 'yes' ]] && echo
+    write_log "LFS_SOURCES now is sticky"
+fi
+if [[ ! -v LFS_KERNEL_PKG || ! $LFS_KERNEL_PKG ]]; then
+    l=""
+    while [[ ! $l ]]; do
+        prompt -n ok "Type the kernel tarball filename: "
+        read l
+    done
+    while [[ ! -f "$LFS_SOURCES/$l" ]]; do
+        prompt ok "Place the kernel tarball at $LFS_SOURCES/$l,"
+        prompt -n ok "    and then hit \`enter': "
+        read
+    done
+    export LFS_KERNEL_PKG="$l"
+    (printf 'export '; conf_set LFS_KERNEL_PKG) >> mklfs.conf
+    echo
+    write_log "LFS_KERNEL_PKG=$LFS_KERNEL_PKG"
+fi
 
+prompt -r cmd "mkdir -pv \$LFS/tools &&"
+prompt -c cmd "ln -snfv \$LFS/tools /"
+su -c "mkdir -pv $LFS/tools && ln -snfv $LFS/tools /" -
+echo
 
+### ###     4.3
+### ###     4.4
+### ###
+fi; if [[ $START_CHP -lt 4 || ( $START_CHP -eq 4 && $START_SCT -le 4 ) ]]; then
+prompt header "SECTION 4.3. Adding the LFS User" \
+              "SECTION 4.4. Setting Up the Environment"
+echo
+[[ -f mklfs.conf ]] && . mklfs.conf
+if [[ ! -v LFS || ! $LFS ]]; then
+    prompt -n ok "Choose a \$LFS [default: /mnt/lfs]: "
+    read l
+    if [[ ! $l ]]; then
+        l=/mnt/lfs
+    fi
+    while [[ ! -d $l ]]; do
+        prompt -n ok "Create the directory $l, and then hit \`enter': "
+        read
+    done
+    export LFS="$(realpath -s $l)"
+    (printf 'export '; conf_set LFS) >> mklfs.conf
+    echo
+    write_log "LFS=$LFS"
+fi
+for ix in ${!PARTS_MPS[*]}; do
+    set -- ${PARTS_MPS[$ix]}
+    if [[ $# -lt 2 || $2 != /* || -v IGNORE_PARTS[$ix] ]]; then
+        continue
+    fi
+    pmps_source="$1"
+    pmps_target="$2"
+    while ! (
+        unset TARGET &&
+        eval "$(findmnt -P --source "$pmps_source" -o TARGET | head -n1)" &&
+        [[ -v TARGET && $TARGET == $pmps_target ]]
+    ); do
+        write_log "detected unmounted partition"
+        prompt warn "We detected an unmounted partition: $1"
+        prompt warn "It should be mounted at $2"
+        prompt -n warn "Mount it and hit \`enter', or type \`ignore': "
+        read l
+        echo
+        if [[ $l == i* ]]; then
+            IGNORE_PARTS[$ix]=i
+            break
+        fi
+    done
+done
+if [[ ! -v LFS_SOURCES || ! $LFS_SOURCES ]]; then
+    prompt -n ok "Choose a sources directory [default $LFS/sources]: "
+    read l
+    if [[ ! $l ]]; then
+        l="$LFS/sources"
+    fi
+    l="$(realpath -s $l)"
+    while [[ ! -d $l ]]; do
+        prompt -r cmd "mkdir -pv "$safe_l
+        su -c "mkdir -pv "$safe_l -
+    done
+    export LFS_SOURCES="$l"
+    (printf 'export '; conf_set LFS_SOURCES) >> mklfs.conf
+    echo
+    write_log "LFS_SOURCES=$LFS_SOURCES"
+    write_log "LFS_SOURCES now exists"
+fi
+if [[ ! -v LFS_KERNEL_PKG || ! $LFS_KERNEL_PKG ]]; then
+    l=""
+    while [[ ! $l ]]; do
+        prompt -n ok "Type the kernel tarball filename: "
+        read l
+    done
+    while [[ ! -f "$LFS_SOURCES/$l" ]]; do
+        prompt ok "Place the kernel tarball at $LFS_SOURCES/$l,"
+        prompt -n ok "    and then hit \`enter': "
+        read
+    done
+    export LFS_KERNEL_PKG="$l"
+    (printf 'export '; conf_set LFS_KERNEL_PKG) >> mklfs.conf
+    echo
+    write_log "LFS_KERNEL_PKG=$LFS_KERNEL_PKG"
+fi
+
+prompt ok "Create the lfs group and user.  Give the lfs user a password."
+prompt ok "    Possibly,  add yourself to the lfs group.  When finished,"
+prompt -n ok "    hit \`enter': "
+read
+echo
+
+prompt -r cmd "chown -v lfs:lfs $LFS/tools &&"
+prompt -c cmd "chown -v lfs:lfs $LFS_SOURCES"
+su -c "chown -v lfs:lfs $LFS/tools && chown -v lfs:lfs $LFS_SOURCES" -
+echo
+
+echo -n "exec env -i HOME=\$HOME TERM=\$TERM PS1='\\u:\\w\$ ' /bin/bash
+" > lfs-bash_profile
+
+echo -n "set +h
+umask 022
+$(conf_set LFS)
+$(conf_set LFS_SOURCES)
+$(conf_set LFS_KERNEL_PKG)
+LC_ALL=POSIX
+LFS_TGT=$(uname -m)-lfs-linux-gnu
+PATH=/tools/bin:/bin:/usr/bin
+export LFS LFS_SOURCES LFS_KERNEL_PKG LC_ALL LFS_TGT PATH
+" > lfs-bashrc
+
+prompt -r cmd "cp -v $PWD/lfs-bash_profile ~lfs/.bash_profile &&"
+prompt -c cmd "cp -v $PWD/lfs-bashrc ~lfs/.bashrc &&"
+prompt -c cmd "chown -Rv lfs:lfs ~lfs/.bash*"
+temp_cmd="cp -v $PWD/lfs-bash_profile ~lfs/.bash_profile &&"
+temp_cmd="$temp_cmd cp -v $PWD/lfs-bashrc ~lfs/.bashrc &&"
+temp_cmd="$temp_cmd chown -Rv lfs:lfs ~lfs/.bash*"
+su -c "$temp_cmd" -
+echo
 
 fi # sections
 mklfs_cleanup
