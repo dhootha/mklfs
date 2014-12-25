@@ -140,9 +140,6 @@ EXIT_UNKNOWN=210
 ### ### ###
 
 conf_set() {
-    #TODO: fazer uma funcao que chama essa, e escreve no arquivo .conf
-    #      de maneira que sobreescreve a variavel certa, pra nao ficar aquele
-    #      monte de repeteco no .conf
     if [[ $# -ne 1 ]]; then
         echo "conf_set() must have one argument" >&2
         exit $EXIT_UNKNOWN_CONFSET
@@ -201,13 +198,39 @@ conf_set_array() {
     printf ')\n'
 }
 
+conf_set_wr() {
+    if [[ $# -ne 1 ]]; then
+        echo "conf_set_wr() must have one argument" >&2
+        exit $EXIT_UNKNOWN_CONFSET
+    fi
+    new_decl="export $(conf_set $1)"
+    if [[ ! -f mklfs.conf ]]; then
+        > mklfs.conf
+    fi
+    new_conf="$(./confparse.sh $1 "$new_decl" < mklfs.conf)"
+    printf '%s\n' "$new_conf" > mklfs.conf
+}
+
+conf_set_array_wr() {
+    if [[ $# -ne 1 ]]; then
+        echo "conf_set_array_wr() must have one argument" >&2
+        exit $EXIT_UNKNOWN_CONFSET
+    fi
+    new_decl="$(conf_set_array $1)"
+    if [[ ! -f mklfs.conf ]]; then
+        > mklfs.conf
+    fi
+    new_conf="$(./confparse.sh $1 "$new_decl" < mklfs.conf)"
+    printf '%s\n' "$new_conf" > mklfs.conf
+}
+
 mklfs_cleanup() {
     stty echo
     cd "$CURR_DIR"
-    conf_set LFS
-    conf_set LFS_SOURCES
-    conf_set_array PARTS_MPS
-    conf_set LFS_KERNEL_PKG
+    [[ -v LFS ]] && conf_set LFS
+    [[ -v LFS_SOURCES ]] && conf_set LFS_SOURCES
+    [[ -v PARTS_MPS ]] && conf_set_array PARTS_MPS
+    [[ -v LFS_KERNEL_PKG ]] && conf_set LFS_KERNEL_PKG
 }
 
 prompt() {
@@ -342,6 +365,7 @@ prompt() {
     printf "%s$Color_Off$endline" "$*"
 }
 
+# Interrupted
 intd() {
     write_log "intd($*)"
     echo ; echo
@@ -351,6 +375,7 @@ intd() {
     exit $EXIT_SIGINT
 }
 
+# Terminated
 termd() {
     write_log "termd($*)"
     echo ; echo
@@ -488,7 +513,8 @@ while ! [[ "$user_answer" = y* ]]; do
     case "$user_answer" in
     q*)
         write_log "User quit after seeing dependency list."
-        write_log "Quitting with EXIT_SYSTEM_NOT_CONFORMANT."
+        write_log "Quitting with EXIT_SYSTEM_NOT_
+        CONFORMANT."
         user_figout $EXIT_SYSTEM_NOT_CONFORMANT
         ;;
     *)
@@ -514,6 +540,8 @@ while ! [[ "$user_answer" = y* ]]; do
         exit $EXIT_NOTFOUND_VERSIONCHECK
     fi
     bash version-check.sh | less
+    #TODO: this script should check all versions, instead of asking the user
+    #      to do it
     echo
 
     prompt ok "Is your  host system  OK?  Did you check everything?  Are all"
@@ -620,7 +648,7 @@ while [[ ! -d $l ]]; do
     read
 done
 export LFS="$(realpath -s $l)"
-(printf 'export '; conf_set LFS) >> mklfs.conf
+conf_set_wr LFS
 echo
 write_log "LFS=$LFS"
 
@@ -696,7 +724,7 @@ fi
 echo
 write_log "parts-mps defined:"
 write_log "$(declare -p PARTS_MPS)"
-conf_set_array PARTS_MPS >> mklfs.conf
+conf_set_array_wr PARTS_MPS
 
 declare -a IGNORE_PARTS='()'
 prompt ok "Now  mount the root partition in \$LFS,  create the mountpoint"
@@ -737,8 +765,8 @@ echo
 
 l="check"
 while [[ $l == c* ]]; do
-    prompt cmd "tree -Cadp \$LFS"
-    tree -Cadp $LFS
+    prompt cmd "tree -Cadp \$LFS -I lost+found"
+    tree -Cadp $LFS -I lost+found
     prompt cmd "mount | grep \$LFS"
     (mount | grep $LFS) || true
     echo
@@ -771,7 +799,7 @@ if [[ ! ${LFS:-} ]]; then
         read
     done
     export LFS="$(realpath -s $l)"
-    (printf 'export '; conf_set LFS) >> mklfs.conf
+    conf_set_wr LFS
     echo
     write_log "LFS=$LFS"
 fi
@@ -807,15 +835,13 @@ if [[ ! $l ]]; then
     l="${LFS_SOURCES:-\$LFS/sources}"
 fi
 l="$(realpath -s $l)"
-safe_l="`printf '%q' \"$l\"`"
 while [[ ! -d $l ]]; do
-    prompt -r cmd "mkdir -pv "$safe_l
+    prompt -r cmd "mkdir -pv \"$l\""
     prompt ok "(type in root passwd)"
-    su -c "mkdir -pv "$safe_l -
+    su -c "mkdir -pv \"$l\"" -
 done
 export LFS_SOURCES="$l"
-safe_LFS_SOURCES=$safe_l
-(printf 'export '; conf_set LFS_SOURCES) >> mklfs.conf
+conf_set_wr LFS_SOURCES
 echo
 write_log "LFS_SOURCES=$LFS_SOURCES"
 write_log "LFS_SOURCES now exists"
@@ -823,8 +849,8 @@ write_log "LFS_SOURCES now exists"
 should_i_echo=no
 while [[ ! -k $LFS_SOURCES ]]; do
     should_i_echo=yes
-    prompt -r cmd "chmod -v a+wt "$safe_l
-    su -c "chmod -v a+wt "$safe_l -
+    prompt -r cmd "chmod -v a+wt \"$LFS_SOURCES\""
+    su -c "chmod -v a+wt \"$LFS_SOURCES\"" -
 done
 [[ $should_i_echo == 'yes' ]] && echo
 write_log "LFS_SOURCES now is sticky"
@@ -944,7 +970,7 @@ if ! [[ $l == s* ]]; then
         prompt -n warn "Trying again after $sleep_time second(s)..."
         sleep $sleep_time
         echo
-        prompt cmd "wget -nv -N -i wget-list-no-kernel -P $safe_LFS_SOURCES"
+        prompt cmd "wget -nv -N -i wget-list-no-kernel -P \"$LFS_SOURCES\""
     done
     write_log "downloaded packages (no kernel) after $tries tries"
     echo
@@ -1136,7 +1162,7 @@ else
 fi
 echo
 export LFS_KERNEL_PKG="$kernel_tarb"
-(printf 'export '; conf_set LFS_KERNEL_PKG) >> mklfs.conf
+conf_set_wr LFS_KERNEL_PKG
 echo
 write_log "LFS_KERNEL_PKG=$LFS_KERNEL_PKG"
 
@@ -1157,7 +1183,7 @@ if [[ ! -v LFS || ! $LFS ]]; then
         read
     done
     export LFS="$(realpath -s $l)"
-    (printf 'export '; conf_set LFS) >> mklfs.conf
+    conf_set_wr LFS
     echo
     write_log "LFS=$LFS"
 fi
@@ -1193,11 +1219,11 @@ if [[ ! -v LFS_SOURCES || ! $LFS_SOURCES ]]; then
     fi
     l="$(realpath -s $l)"
     while [[ ! -d $l ]]; do
-        prompt -r cmd "mkdir -pv "$safe_l
-        su -c "mkdir -pv "$safe_l -
+        prompt -r cmd "mkdir -pv \"$l\""
+        su -c "mkdir -pv \"$l\"" -
     done
     export LFS_SOURCES="$l"
-    (printf 'export '; conf_set LFS_SOURCES) >> mklfs.conf
+    conf_set_wr LFS_SOURCES
     echo
     write_log "LFS_SOURCES=$LFS_SOURCES"
     write_log "LFS_SOURCES now exists"
@@ -1222,7 +1248,7 @@ if [[ ! -v LFS_KERNEL_PKG || ! $LFS_KERNEL_PKG ]]; then
         read
     done
     export LFS_KERNEL_PKG="$l"
-    (printf 'export '; conf_set LFS_KERNEL_PKG) >> mklfs.conf
+    conf_set_wr LFS_KERNEL_PKG
     echo
     write_log "LFS_KERNEL_PKG=$LFS_KERNEL_PKG"
 fi
@@ -1251,7 +1277,7 @@ if [[ ! -v LFS || ! $LFS ]]; then
         read
     done
     export LFS="$(realpath -s $l)"
-    (printf 'export '; conf_set LFS) >> mklfs.conf
+    conf_set_wr LFS
     echo
     write_log "LFS=$LFS"
 fi
@@ -1287,11 +1313,11 @@ if [[ ! -v LFS_SOURCES || ! $LFS_SOURCES ]]; then
     fi
     l="$(realpath -s $l)"
     while [[ ! -d $l ]]; do
-        prompt -r cmd "mkdir -pv "$safe_l
-        su -c "mkdir -pv "$safe_l -
+        prompt -r cmd "mkdir -pv \"$l\""
+        su -c "mkdir -pv \"$l\"" -
     done
     export LFS_SOURCES="$l"
-    (printf 'export '; conf_set LFS_SOURCES) >> mklfs.conf
+    conf_set_wr LFS_SOURCES
     echo
     write_log "LFS_SOURCES=$LFS_SOURCES"
     write_log "LFS_SOURCES now exists"
@@ -1308,7 +1334,7 @@ if [[ ! -v LFS_KERNEL_PKG || ! $LFS_KERNEL_PKG ]]; then
         read
     done
     export LFS_KERNEL_PKG="$l"
-    (printf 'export '; conf_set LFS_KERNEL_PKG) >> mklfs.conf
+    conf_set_wr LFS_KERNEL_PKG
     echo
     write_log "LFS_KERNEL_PKG=$LFS_KERNEL_PKG"
 fi
@@ -1346,6 +1372,103 @@ temp_cmd="$temp_cmd cp -v $PWD/lfs-bashrc ~lfs/.bashrc &&"
 temp_cmd="$temp_cmd chown -Rv lfs:lfs ~lfs/.bash*"
 su -c "$temp_cmd" -
 echo
+
+### ###     5.2
+### ###
+fi; if [[ $START_CHP -lt 5 || ( $START_CHP -eq 5 && $START_SCT -le 2 ) ]]; then
+prompt header "SECTION 5.2. Toolchain Technical Notes"
+echo
+[[ -f mklfs.conf ]] && . mklfs.conf
+if [[ ! -v LFS || ! $LFS ]]; then
+    prompt -n ok "Choose a \$LFS [default: /mnt/lfs]: "
+    read l
+    if [[ ! $l ]]; then
+        l=/mnt/lfs
+    fi
+    while [[ ! -d $l ]]; do
+        prompt -n ok "Create the directory $l, and then hit \`enter': "
+        read
+    done
+    export LFS="$(realpath -s $l)"
+    conf_set_wr LFS
+    echo
+    write_log "LFS=$LFS"
+fi
+for ix in ${!PARTS_MPS[*]}; do
+    set -- ${PARTS_MPS[$ix]}
+    if [[ $# -lt 2 || $2 != /* || -v IGNORE_PARTS[$ix] ]]; then
+        continue
+    fi
+    pmps_source="$1"
+    pmps_target="$2"
+    while ! (
+        unset TARGET &&
+        eval "$(findmnt -P --source "$pmps_source" -o TARGET | head -n1)" &&
+        [[ -v TARGET && $TARGET == $pmps_target ]]
+    ); do
+        write_log "detected unmounted partition"
+        prompt warn "We detected an unmounted partition: $1"
+        prompt warn "It should be mounted at $2"
+        prompt -n warn "Mount it and hit \`enter', or type \`ignore': "
+        read l
+        echo
+        if [[ $l == i* ]]; then
+            IGNORE_PARTS[$ix]=i
+            break
+        fi
+    done
+done
+if [[ ! -v LFS_SOURCES || ! $LFS_SOURCES ]]; then
+    prompt -n ok "Choose a sources directory [default $LFS/sources]: "
+    read l
+    if [[ ! $l ]]; then
+        l="$LFS/sources"
+    fi
+    l="$(realpath -s $l)"
+    while [[ ! -d $l ]]; do
+        prompt -r cmd "mkdir -pv \"$l\""
+        su -c "mkdir -pv \"$l\"" -
+    done
+    export LFS_SOURCES="$l"
+    conf_set_wr LFS_SOURCES
+    echo
+    write_log "LFS_SOURCES=$LFS_SOURCES"
+    write_log "LFS_SOURCES now exists"
+fi
+if [[ ! -v LFS_KERNEL_PKG || ! $LFS_KERNEL_PKG ]]; then
+    l=""
+    while [[ ! $l ]]; do
+        prompt -n ok "Type the kernel tarball filename: "
+        read l
+    done
+    while [[ ! -f "$LFS_SOURCES/$l" ]]; do
+        prompt ok "Place the kernel tarball at $LFS_SOURCES/$l,"
+        prompt -n ok "    and then hit \`enter': "
+        read
+    done
+    export LFS_KERNEL_PKG="$l"
+    conf_set_wr LFS_KERNEL_PKG
+    echo
+    write_log "LFS_KERNEL_PKG=$LFS_KERNEL_PKG"
+fi
+
+# esse comando:
+# basename $(
+#     readelf -l /bin/sh | grep interpreter |
+#     sed -r 's_^\s*\[[^:]*:\s*(.*)\]$_\1_'
+# )
+# dah o nome do dynamic linker do host. gravar isso numa variavel
+
+#TODO: quando compilar o Binutils, rodar o config.guess (vide SECTION 5.2)
+
+#TODO: antes de compilar o glibc, usar o shlib-versions pra dar um jeito melhor
+#      de descobrir o nome do dynamic linker do host
+
+#TODO: quando compilar o glibc, depois do ./configure, dar uma olhada no
+#      config.make e verificar se tem (vide SECTION 5.2):
+#      - CC="i686-lfs-gnu-gcc"
+#      - -nostdinc
+#      - -isystem
 
 fi # sections
 mklfs_cleanup

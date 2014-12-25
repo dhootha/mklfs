@@ -53,6 +53,7 @@ assignment=''
 varname=''
 
 linha=0
+got_it='no'
 while IFS='' read -r l || [[ $l ]]; do
     #printf "$g%s$o" "$l"
     this_line="$(echo "$l" | sed -e 's/\(.\)/x\1x\n/g')"
@@ -357,6 +358,7 @@ while IFS='' read -r l || [[ $l ]]; do
     EQUALS|CONTENT_SIMPLE|DECL_END|CONTENT_ARREND)
         #printf '%-20s<<<<%s>>>>\n' "$varname" "$assignment"
         if [[ $varname == $1 ]]; then
+            got_it="yes"
             printf '%s\n' "$2"
         else
             printf '%s\n' "$assignment"
@@ -390,6 +392,7 @@ while IFS='' read -r l || [[ $l ]]; do
         else
             #printf '%-20s<<<<%s>>>>\n' "$varname" "$assignment"
             if [[ $varname == $1 ]]; then
+                got_it='yes'
                 printf '%s\n' "$2"
             else
                 printf '%s\n' "$assignment"
@@ -411,3 +414,7 @@ while IFS='' read -r l || [[ $l ]]; do
 
     let linha+=1
 done
+
+if [[ $got_it == 'no' ]]; then
+    printf '%s\n' "$2"
+fi
