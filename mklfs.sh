@@ -1350,10 +1350,14 @@ prompt -c cmd "chown -v lfs:lfs $LFS_SOURCES"
 su -c "chown -v lfs:lfs $LFS/tools && chown -v lfs:lfs $LFS_SOURCES" -
 echo
 
-echo -n "exec env -i HOME=\$HOME TERM=\$TERM PS1='\\u:\\w\$ ' /bin/bash
+echo -n "# THIS FILE IS GENERATED AUTOMATICALLY
+# edit mklfs.sh instead
+exec env -i HOME=\$HOME TERM=\$TERM PS1='linuxfromscratch::bash\$ ' /bin/bash
 " > lfs-bash_profile
 
-echo -n "set +h
+echo -n "# THIS FILE IS GENERATED AUTOMATICALLY
+# edit mklfs.sh instead
+set +h
 umask 022
 $(conf_set LFS)
 $(conf_set LFS_SOURCES)
@@ -1361,6 +1365,7 @@ $(conf_set LFS_KERNEL_PKG)
 LC_ALL=POSIX
 LFS_TGT=$(uname -m)-lfs-linux-gnu
 PATH=/tools/bin:/bin:/usr/bin
+PS1='linuxfromscratch::bash\$ '
 export LFS LFS_SOURCES LFS_KERNEL_PKG LC_ALL LFS_TGT PATH
 " > lfs-bashrc
 

@@ -1,0 +1,53 @@
+#!/usr/bin/expect -f
+
+set EXIT_TIMEOUT    1
+set EXIT_UNKNOWN    2
+set EXIT_USER_QUIT  3
+set EXIT_BAD_AUTH   4
+
+set BASH_PROMPT "linuxfromscratch::bash\$ "
+
+set timeout 60
+
+spawn su - lfs
+
+expect "Password: "
+set userquit yes
+# let the user type in the password for the lfs user
+interact {
+    "\r" {
+        set userquit no
+        return
+    }
+}
+if {[string equal $userquit yes]} {
+    puts "\nch05.exp: Unknown error."
+    exit $EXIT_USER_QUIT
+}
+
+# User has typed the password and hit enter to return control back to this
+# script. Now, send return to the process, so that it can read the user's
+# password.
+send "\r"
+
+expect {
+    timeout {
+        puts "ch05.exp: Timed out!"
+        exit $EXIT_TIMEOUT
+    }
+    eof {
+        puts "ch05.exp: Unknown error."
+        exit $EXIT_UNKNOWN
+    }
+    -re "\[Aa]uthentication (\[Ee]rror|\[Ff]ail)" {
+        expect "\n"
+        puts "ch05.exp: It looks like you didn't type your password correctly."
+        exit $EXIT_BAD_AUTH
+    }
+    "$BASH_PROMPT"
+}
+
+#send_user opaopaprompt
+#send "echo 'oi! lalala'\r"
+#expect lalala {puts opaganheilalala}
+#expect *
