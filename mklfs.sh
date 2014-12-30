@@ -118,6 +118,7 @@ EXIT_NOTFOUND_MD5SUM=30
 EXIT_NOTFOUND_GPG=31
 EXIT_NOTFOUND_XZ=32
 EXIT_NOTFOUND_KERNEL=33
+EXIT_NOTFOUND_EXPECT=34
 
 EXIT_DOWNLOAD_WGETLIST_NOKERNEL=50
 EXIT_DOWNLOAD_KERNEL_GIT=51
@@ -126,6 +127,8 @@ EXIT_DOWNLOAD_KERNEL_KEY=53
 
 EXIT_CHECKSUM_PACKAGES=55
 EXIT_CHECKSUM_KERNEL=56
+
+EXIT_EXPECT_TIMEOUT=60
 
 EXIT_SYSTEM_NOT_CONFORMANT=100
 EXIT_SYSTEM_NOT_CONFORMANT_LIBS=101
@@ -513,8 +516,7 @@ while ! [[ "$user_answer" = y* ]]; do
     case "$user_answer" in
     q*)
         write_log "User quit after seeing dependency list."
-        write_log "Quitting with EXIT_SYSTEM_NOT_
-        CONFORMANT."
+        write_log "Quitting with EXIT_SYSTEM_NOT_CONFORMANT."
         user_figout $EXIT_SYSTEM_NOT_CONFORMANT
         ;;
     *)
@@ -856,12 +858,8 @@ done
 write_log "LFS_SOURCES now is sticky"
 
 if ! which md5sum > /dev/null; then
-    prompt err "Can't  find  md5sum !  Place it  in  the  same  directory  as"
-    prompt err "    mklfs.sh:"
-    prompt err ""
-    prompt err "        `pwd`"
-    prompt err ""
-    prompt err "    and then run mklfs.sh again."
+    prompt err "Can't  find md5sum !  Pleae install it and then run  mklfs.sh"
+    prompt err "    again."
     echo
     write_log "Couldn't find md5sum"
     mklfs_cleanup
@@ -886,11 +884,7 @@ cp -v md5sums-no-kernel "$LFS_SOURCES/"
 echo
 
 if ! which gpg > /dev/null; then
-    prompt err "Can't find gpg !  Place it in the same directory as mklfs.sh:"
-    prompt err ""
-    prompt err "        `pwd`"
-    prompt err ""
-    prompt err "    and then run mklfs.sh again."
+    prompt err "Can't find gpg! Pleae install it and then run mklfs.sh again."
     echo
     write_log "Couldn't find gpg"
     mklfs_cleanup
@@ -898,11 +892,7 @@ if ! which gpg > /dev/null; then
 fi
 
 if ! which xz > /dev/null; then
-    prompt err "Can't find xz !  Place it in the same directory as mklfs.sh:"
-    prompt err ""
-    prompt err "        `pwd`"
-    prompt err ""
-    prompt err "    and then run mklfs.sh again."
+    prompt err "Can't find xz! Please install it and then run mklfs.sh again."
     echo
     write_log "Couldn't find xz"
     mklfs_cleanup
@@ -1378,10 +1368,10 @@ temp_cmd="$temp_cmd chown -Rv lfs:lfs ~lfs/.bash*"
 su -c "$temp_cmd" -
 echo
 
-### ###     5.2
+### ###     5.4
 ### ###
-fi; if [[ $START_CHP -lt 5 || ( $START_CHP -eq 5 && $START_SCT -le 2 ) ]]; then
-prompt header "SECTION 5.2. Toolchain Technical Notes"
+fi; if [[ $START_CHP -lt 5 || ( $START_CHP -eq 5 && $START_SCT -le 4 ) ]]; then
+prompt header "SECTION 5.4. Binutils-2.24 - Pass 1"
 echo
 [[ -f mklfs.conf ]] && . mklfs.conf
 if [[ ! -v LFS || ! $LFS ]]; then
@@ -1456,6 +1446,58 @@ if [[ ! -v LFS_KERNEL_PKG || ! $LFS_KERNEL_PKG ]]; then
     echo
     write_log "LFS_KERNEL_PKG=$LFS_KERNEL_PKG"
 fi
+
+if ! which expect > /dev/null; then
+    prompt err "Can't  find expect !  Pleae install it and then run  mklfs.sh"
+    prompt err "    again."
+    echo
+    write_log "Couldn't find md5sum"
+    mklfs_cleanup
+    exit $EXIT_NOTFOUND_EXPECT
+fi
+
+prompt ok "The commands in this section  must be run  as the user \`lfs'."
+prompt ok "    Please,  enter  the  password  for  the  \`lfs'  user  you"
+prompt ok "    created."
+echo
+
+prompt cmd "su - lfs"
+result=0
+expect -f builds/ch05.exp || result=$?
+while [[ $result -gt 0 ]]; do
+    case $result in
+    1)
+        write_log "The ch05.exp script timed-out."
+        echo
+        prompt warn \
+            "We can't seem  to get a prompt for the lfs user.  Do you want"
+        prompt -n warn "    to try again? [y/n] "
+        read l
+        if [[ $l == n* || $l == N* ]]; then
+            write_log "User decided to quit after expect timed-out."
+            user_figout $EXIT_EXPECT_TIMEOUT
+        fi
+        : #todo
+        ;;
+    2)
+        : #todo
+        ;;
+    3)
+        : #todo
+        ;;
+    4)
+        : #todo
+        ;;
+    *)
+        : #todo
+        ;;
+    esac
+    result=0
+    expect -f builds/ch05.exp || result=$?
+    echo result $result
+done
+
+# Botar coisas bonitinhas pro user digitar a senha do lfs
 
 # esse comando:
 # basename $(

@@ -7,7 +7,7 @@ set EXIT_BAD_AUTH   4
 
 set BASH_PROMPT "linuxfromscratch::bash\$ "
 
-set timeout 60
+set timeout 1
 
 spawn su - lfs
 
@@ -28,6 +28,7 @@ if {[string equal $userquit yes]} {
 # User has typed the password and hit enter to return control back to this
 # script. Now, send return to the process, so that it can read the user's
 # password.
+send_user "\n"
 send "\r"
 
 expect {
