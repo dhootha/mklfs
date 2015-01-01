@@ -1355,8 +1355,13 @@ $(conf_set LFS_KERNEL_PKG)
 LC_ALL=POSIX
 LFS_TGT=$(uname -m)-lfs-linux-gnu
 PATH=/tools/bin:/bin:/usr/bin
-PS1='linuxfromscratch::bash\$ '
-export LFS LFS_SOURCES LFS_KERNEL_PKG LC_ALL LFS_TGT PATH
+PS1='${BCyan}linuxfromscratch::bash\$ ${Color_Off}'
+prompt1='\\n${BCyan}linuxfromscratch::$BCyan$Color_Off'
+prompt2='${BICyan}[$Color_Off'
+prompt3='${BICyan}]$Color_Off'
+PROMPT_COMMAND='echo -e \"\$prompt1\$prompt2 \$PWD \$prompt3\"'
+export LFS LFS_SOURCES LFS_KERNEL_PKG LC_ALL LFS_TGT
+export PATH PS1 PROMPT_COMMAND
 " > lfs-bashrc
 
 prompt -r cmd "cp -v $PWD/lfs-bash_profile ~lfs/.bash_profile &&"
@@ -1494,7 +1499,6 @@ while [[ $result -gt 0 ]]; do
     esac
     result=0
     expect -f builds/ch05.exp || result=$?
-    echo result $result
 done
 
 # Botar coisas bonitinhas pro user digitar a senha do lfs

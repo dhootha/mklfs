@@ -2,3 +2,4 @@
 *.bak
 mklfs.conf*
 mklfs.log*
+lfs-*
