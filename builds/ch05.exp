@@ -7,6 +7,9 @@ set EXIT_BAD_AUTH   4
 
 set BASH_PROMPT "linuxfromscratch::bash\$ "
 
+set PKG_BINUTILS        "binutils-2.24.tar.bz2"
+set PKG_BINUTILS_DIR    "binutils-2.24"
+
 set timeout -1
 
 spawn -noecho su - lfs
@@ -48,7 +51,20 @@ expect {
     "$BASH_PROMPT"
 }
 
-#send_user opaopaprompt
-#send "echo 'oi! lalala'\r"
-#expect lalala {puts opaganheilalala}
-#expect *
+send "cd \"\$LFS_SOURCES\"\r"
+expect "$BASH_PROMPT"
+
+###
+###    BINUTILS
+###
+
+set timeout -1
+
+send "rm -rf $PKG_BINUTILS_DIR\r"
+expect "$BASH_PROMPT"
+send "tar xjf $PKG_BINUTILS\r"
+expect "$BASH_PROMPT"
+send "rm -rf binutils-build ; mkdir binutils-build\r"
+expect "$BASH_PROMPT"
+send "cd binutils-build\r"
+expect "$BASH_PROMPT"

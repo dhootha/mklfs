@@ -129,6 +129,8 @@ EXIT_CHECKSUM_PACKAGES=55
 EXIT_CHECKSUM_KERNEL=56
 
 EXIT_EXPECT_TIMEOUT=60
+EXIT_EXPECT_UNKNOWN=61
+EXIT_EXPECT_INTRD=62
 
 EXIT_SYSTEM_NOT_CONFORMANT=100
 EXIT_SYSTEM_NOT_CONFORMANT_LIBS=101
@@ -1357,8 +1359,8 @@ LFS_TGT=$(uname -m)-lfs-linux-gnu
 PATH=/tools/bin:/bin:/usr/bin
 PS1='${BCyan}linuxfromscratch::bash\$ ${Color_Off}'
 prompt1='\\n${BCyan}linuxfromscratch::$BCyan$Color_Off'
-prompt2='${BICyan}[$Color_Off'
-prompt3='${BICyan}]$Color_Off'
+prompt2='${BICyan}[$Color_Off$Cyan'
+prompt3='$Color_Off${BICyan}]$Color_Off'
 PROMPT_COMMAND='echo -e \"\$prompt1\$prompt2 \$PWD \$prompt3\"'
 export LFS LFS_SOURCES LFS_KERNEL_PKG LC_ALL LFS_TGT
 export PATH PS1 PROMPT_COMMAND
@@ -1471,7 +1473,8 @@ result=0
 expect -f builds/ch05.exp || result=$?
 while [[ $result -gt 0 ]]; do
     case $result in
-    1)
+    1)  # EXIT_TIMEOUT
+        #
         write_log "The ch05.exp script timed-out."
         echo
         prompt warn \
@@ -1482,26 +1485,52 @@ while [[ $result -gt 0 ]]; do
             write_log "User decided to quit after expect timed-out."
             user_figout $EXIT_EXPECT_TIMEOUT
         fi
-        : #todo
         ;;
-    2)
-        : #todo
+    2)  # EXIT_UNKNOWN
+        #
+        write_log "The ch05.exp script returned EXIT_UNKNOWN"
+        echo
+        prompt warn \
+            "An error occurred while trying to log in as user lfs.  Do you"
+        prompt -n warn "    want to try again? [y/n] "
+        read l
+        if [[ $l == n* || $l == N* ]]; then
+            write_log "User decided to quit after expect error."
+            user_figout $EXIT_EXPECT_UNKNOWN
+        fi
         ;;
-    3)
-        : #todo
+    3)  # EXIT_USER_QUIT
+        #
+        write_log "The ch05.exp script returned EXIT_USER_QUIT"
+        intd "inside ch05.exp, script interrupted before lfs password"
         ;;
-    4)
-        : #todo
+    4)  # EXIT_BAD_AUTH
+        #
+        write_log "The ch05.exp script returned EXIT_BAD_AUTH"
+        echo
+        prompt warn \
+            "It looks like  you have typed the wrong password  for the lfs"
+        prompt -n warn "    user. Do you want to try again? [y/n] "
+        read l
+        if [[ $l == n* || $l == N* ]]; then
+            write_log "User decided to quit after bad auth in ch05.exp"
+            user_figout $EXIT_EXPECT_UNKNOWN
+        fi
         ;;
-    *)
-        : #todo
+    *)  #   ???
+        #
+        write_log "Unknown error after running ch05.exp"
+        echo
+        prompt err "Unknown error after running the ch05.exp script."
+        mklfs_cleanup
+        exit $EXIT_UNKNOWN
         ;;
     esac
     result=0
     expect -f builds/ch05.exp || result=$?
 done
 
-# Botar coisas bonitinhas pro user digitar a senha do lfs
+echo ; echo
 
 # esse comando:
 # basename $(
